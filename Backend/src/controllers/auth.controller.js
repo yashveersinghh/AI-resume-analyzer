@@ -1,4 +1,5 @@
 const userModel = require("../models/user.model");
+const tokenBlacklistModel = require("../models/blacklist.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -16,17 +17,13 @@ async function registerUserController(req, res) {
     });
   }
 
-  const isUserAlreadyExists = userModel.findOne({
+  const isUserAlreadyExists = await userModel.findOne({
     $or: [{ username }, { email }],
   });
 
-  if (isUserAlreadyExists.username == username) {
+  if (isUserAlreadyExists) {
     return res.status(400).json({
-      message: "User already exists with this username",
-    });
-  } else {
-    return res.status(400).json({
-      message: "User already exists with this email address",
+      message: "User already exists with this username or email address",
     });
   }
 
@@ -61,7 +58,7 @@ async function registerUserController(req, res) {
  * @description login a user, expects email and password in the request body
  * @access public
  */
-async function loginUserController(res, req) {
+async function loginUserController(req, res) {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -78,7 +75,7 @@ async function loginUserController(res, req) {
     });
   }
 
-  const isPasswordValid = await bcrypt.compare(password, user.passsword);
+  const isPasswordValid = await bcrypt.compare(password, user.password);
 
   if (!isPasswordValid) {
     return res.status(400).json({
@@ -89,7 +86,7 @@ async function loginUserController(res, req) {
   const token = jwt.sign(
     { id: user._id, username: user.username },
     process.env.JWT_SECRET,
-    { expiresIn: "id" },
+    { expiresIn: "1d" },
   );
 
   res.cookie("token", token);
@@ -103,7 +100,26 @@ async function loginUserController(res, req) {
   });
 }
 
+/**
+ * @name logoutUserController
+ * @description clear token from the user cookie and add the token to blacklist
+ * @access public
+ */
+async function logoutUserController(req, res) {
+  const token = res.cookie.token;
+
+  if (token) {
+    await tokenBlacklistModel.create({ token });
+  }
+
+  res.clearCookie("token");
+  res.status(200).json({
+    message: "User logged out successfully",
+  });
+}
+
 module.exports = {
   registerUserController,
-  loginUserController
+  loginUserController,
+  logoutUserController,
 };
